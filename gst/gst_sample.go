@@ -13,6 +13,11 @@ type Sample struct {
 	sample *C.GstSample
 }
 
+func SampleFromPtr(ptr uintptr) *Sample {
+	pointer := (*C.GstSample)(unsafe.Pointer(ptr))
+	return &Sample{sample: pointer}
+}
+
 // FromGstSampleUnsafeNone wraps the pointer to the given C GstSample with the go type.
 // This is meant for internal usage and is exported for visibility to other packages.
 func FromGstSampleUnsafeNone(sample unsafe.Pointer) *Sample {
