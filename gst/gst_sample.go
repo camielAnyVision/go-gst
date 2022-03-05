@@ -54,6 +54,18 @@ func (s *Sample) GetBuffer() *Buffer {
 	return FromGstBufferUnsafeNone(unsafe.Pointer(C.gst_sample_get_buffer((*C.GstSample)(s.Instance()))))
 }
 
+func (b *Buffer) RefCount() int {
+	//b.mu.RLock()
+	//defer b.mu.RUnlock()
+	return int(b.ptr.mini_object.refcount)
+}
+
+func (b *Buffer) Terminate() {
+	for i := 0; i < b.RefCount(); i++ {
+		b.Unref()
+	}
+}
+
 // GetBufferList gets the buffer list associated with this sample.
 func (s *Sample) GetBufferList() *BufferList {
 	return FromGstBufferListUnsafeNone(unsafe.Pointer(C.gst_sample_get_buffer_list(s.Instance())))
@@ -93,4 +105,6 @@ func (s *Sample) SetSegment(segment *Segment) {
 }
 
 // Unref calls gst_sample_unref on the sample.
-func (s *Sample) Unref() { C.gst_sample_unref((*C.GstSample)(s.Instance())) }
+func (s *Sample) Unref() {
+	C.gst_sample_unref((*C.GstSample)(s.Instance()))
+}

@@ -24,6 +24,7 @@ import (
 	"io"
 	"io/ioutil"
 	"runtime"
+	"sync"
 	"time"
 	"unsafe"
 
@@ -38,12 +39,14 @@ func GetMaxBufferMemory() uint64 { return uint64(C.gst_buffer_get_max_memory()) 
 type Buffer struct {
 	ptr     *C.GstBuffer
 	mapInfo *MapInfo
+	mu      *sync.RWMutex
 }
 
 // FromGstBufferUnsafeNone wraps the given buffer, sinking any floating references, and places
 // a finalizer on the wrapped Buffer.
 func FromGstBufferUnsafeNone(buf unsafe.Pointer) *Buffer {
 	wrapped := ToGstBuffer(buf)
+	wrapped.mu = &sync.RWMutex{}
 	wrapped.Ref()
 	runtime.SetFinalizer(wrapped, (*Buffer).Unref)
 	return wrapped
@@ -52,6 +55,7 @@ func FromGstBufferUnsafeNone(buf unsafe.Pointer) *Buffer {
 // FromGstBufferUnsafeFull wraps the given buffer without taking an additional reference.
 func FromGstBufferUnsafeFull(buf unsafe.Pointer) *Buffer {
 	wrapped := ToGstBuffer(buf)
+	wrapped.mu = &sync.RWMutex{}
 	runtime.SetFinalizer(wrapped, (*Buffer).Unref)
 	return wrapped
 }
@@ -59,7 +63,9 @@ func FromGstBufferUnsafeFull(buf unsafe.Pointer) *Buffer {
 // ToGstBuffer converts the given pointer into a Buffer without affecting the ref count or
 // placing finalizers.
 func ToGstBuffer(buf unsafe.Pointer) *Buffer {
-	return wrapBuffer((*C.GstBuffer)(buf))
+	buffer := wrapBuffer((*C.GstBuffer)(buf))
+	buffer.mu = &sync.RWMutex{}
+	return buffer
 }
 
 // NewEmptyBuffer returns a new empty buffer.
@@ -155,10 +161,20 @@ func NewBufferFull(flags MemoryFlags, data []byte, maxSize, offset, size int64, 
 func (b *Buffer) Instance() *C.GstBuffer { return C.toGstBuffer(unsafe.Pointer(b.ptr)) }
 
 // Ref increases the ref count on the buffer by one.
-func (b *Buffer) Ref() *Buffer { return wrapBuffer(C.gst_buffer_ref(b.Instance())) }
+func (b *Buffer) Ref() *Buffer {
+	//b.mu.Lock()
+	//defer b.mu.Unlock()
+	return wrapBuffer(C.gst_buffer_ref(b.Instance()))
+}
 
 // Unref decreaes the ref count on the buffer by one. When the refcount reaches zero, the memory is freed.
-func (b *Buffer) Unref() { C.gst_buffer_unref(b.Instance()) }
+func (b *Buffer) Unref() {
+	if b.RefCount() > 0 {
+		//b.mu.Lock()
+		//defer b.mu.Unlock()
+		C.gst_buffer_unref(b.Instance())
+	}
+}
 
 // Reader returns an io.Reader for this buffer.
 func (b *Buffer) Reader() io.Reader { return bytes.NewBuffer(b.Bytes()) }
