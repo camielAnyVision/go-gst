@@ -102,12 +102,18 @@ func (o *Object) Ref() *Object {
 }
 
 func (o *Object) GetCurrRefcount() int {
+	if o.InitiallyUnowned.Object.GObject == nil || uintptr(unsafe.Pointer(o.InitiallyUnowned.Object.GObject)) == 0 {
+		return 0
+	}
 	return int(C.refcount(unsafe.Pointer(o.InitiallyUnowned.Object.GObject)))
 }
 
 // Unref decrements the reference count on object. If reference count hits zero, destroy object.
 // This function does not take the lock on object as it relies on atomic refcounting.
 func (o *Object) Unref() {
+	if o.Object.GObject == nil || uintptr(unsafe.Pointer(o.InitiallyUnowned.Object.GObject)) == 0 {
+		return
+	}
 	if o.GetCurrRefcount() != 0 {
 		C.gst_object_unref((C.gpointer)(o.Unsafe()))
 	}
@@ -115,6 +121,9 @@ func (o *Object) Unref() {
 
 func (o *Object) Terminate() {
 	for i := 0; i < o.GetCurrRefcount(); i++ {
+		if o.GetCurrRefcount() == 1 {
+			break
+		}
 		o.Unref()
 	}
 }
