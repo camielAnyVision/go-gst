@@ -1,13 +1,26 @@
 package gst
 
-// #include "gst.go.h"
+import "C"
+import (
+	"github.com/tinyzimmer/go-glib/glib"
+	"unsafe"
+)
+
+/*
+#include "gst.go.h"
+#cgo CFLAGS: -I /usr/include/glib-2.0/
+#cgo pkg-config: glib-2.0 gobject-2.0
+#include "glib-object.h"
+
+int refcount(void* x) {
+   GObject* obj = ((GObject*)x);
+   return obj->ref_count;
+}
+*/
 import "C"
 
 import (
 	"time"
-	"unsafe"
-
-	"github.com/tinyzimmer/go-glib/glib"
 )
 
 // Object is a go representation of a GstObject.
@@ -88,8 +101,29 @@ func (o *Object) Ref() *Object {
 	return o
 }
 
+func (o *Object) GetCurrRefcount() int {
+	if o.InitiallyUnowned.Object.GObject == nil || uintptr(unsafe.Pointer(o.InitiallyUnowned.Object.GObject)) == 0 {
+		return 0
+	}
+	return int(C.refcount(unsafe.Pointer(o.InitiallyUnowned.Object.GObject)))
+}
+
 // Unref decrements the reference count on object. If reference count hits zero, destroy object.
 // This function does not take the lock on object as it relies on atomic refcounting.
 func (o *Object) Unref() {
-	C.gst_object_unref((C.gpointer)(o.Unsafe()))
+	if o.Object.GObject == nil || uintptr(unsafe.Pointer(o.InitiallyUnowned.Object.GObject)) == 0 {
+		return
+	}
+	if o.GetCurrRefcount() != 0 {
+		C.gst_object_unref((C.gpointer)(o.Unsafe()))
+	}
+}
+
+func (o *Object) Terminate() {
+	for i := 0; i < o.GetCurrRefcount(); i++ {
+		if o.GetCurrRefcount() == 1 {
+			break
+		}
+		o.Unref()
+	}
 }
